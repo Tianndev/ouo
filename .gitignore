@@ -6,9 +6,6 @@ yarn-error.log*
 package-lock.json
 yarn.lock
 
-# Data input
-data/*.txt
-
 # Log files
 *.log
 logs/
