@@ -1,31 +1,29 @@
-# OUO.IO Bypass Tool
+# OUO.IO Link Navigator
 
-Alat ini mengotomatiskan proses bypass tautan OUO.IO, dirancang untuk tujuan pengujian dan simulasi traffic. Fitur utamanya mencakup dukungan rotasi proxy SOCKS, pemrosesan konkuren multi-worker, dan otomatisasi browser menggunakan Puppeteer dengan mode stealth.
+Solusi otomatisasi navigasi tautan OUO.IO yang dibangun di atas Puppeteer. Dirancang dengan arsitektur multi-worker konkuren, rotasi proxy SOCKS otomatis, dan emulasi browser mobile untuk memastikan keandalan navigasi yang optimal.
 
 ## Fitur
 
-- **Bypass Otomatis**: Menangani seluruh alur navigasi tautan OUO.IO secara otomatis.
-- **Dukungan Proxy**: Secara otomatis mengambil dan menggunakan proxy SOCKS4/5 dari sumber publik.
-- **Pemrosesan Konkuren**: Mendukung eksekusi multi-worker untuk memproses banyak URL secara bersamaan.
-- **Kemampuan Stealth**: Mengimplementasikan berbagai teknik untuk menghindari mekanisme deteksi bot.
-- **Pemblokiran Iklan**: Memblokir request dari domain iklan untuk mempercepat navigasi.
-- **Operasi Headless**: Berjalan di latar belakang tanpa antarmuka browser untuk efisiensi.
-- **URL Acak**: Mengacak urutan URL sebelum diproses agar lebih natural.
+- **Navigasi Otomatis** — Mengelola seluruh alur navigasi tautan OUO.IO dari awal hingga selesai.
+- **Rotasi Proxy SOCKS** — Mengambil dan merotasi proxy SOCKS4/5 dari sumber publik secara otomatis.
+- **Pemrosesan Konkuren** — Menjalankan beberapa worker secara paralel untuk throughput maksimal.
+- **Emulasi Browser Mobile** — Mensimulasikan perilaku browser mobile nyata untuk navigasi yang konsisten dan andal.
+- **Filter Iklan** — Memblokir request domain iklan secara otomatis untuk mempercepat waktu muat halaman.
+- **Operasi Headless** — Berjalan sepenuhnya di latar belakang tanpa antarmuka visual.
+- **Distribusi URL Acak** — Mengacak urutan pemrosesan URL untuk distribusi beban yang merata.
 
 ![Preview Tools](data/image.png)
 
 ## Prasyarat
 
-Pastikan perangkat lunak berikut terinstal di sistem Anda sebelum melanjutkan:
+Pastikan perangkat lunak berikut telah terpasang sebelum memulai:
 
-- **Node.js**: Versi 16.0.0 atau lebih tinggi.
-- **NPM**: Node Package Manager (biasanya disertakan dengan Node.js).
-- **Git**: Untuk mengkloning repositori.
-- **Koneksi Internet Stabil**: Diperlukan untuk pengambilan proxy dan navigasi.
+- **Node.js** `>= 20.0.0`
+- **NPM** — Node Package Manager (sudah termasuk dalam paket Node.js)
+- **Git** — Untuk mengkloning repositori
+- **Koneksi Internet Stabil** — Diperlukan untuk pengambilan proxy dan proses navigasi
 
 ## Instalasi
-
-Ikuti langkah-langkah ini untuk menyiapkan proyek secara lokal:
 
 1. **Clone Repositori**
 
@@ -36,60 +34,53 @@ Ikuti langkah-langkah ini untuk menyiapkan proyek secara lokal:
 
 2. **Instal Dependensi**
 
-    Instal paket Node.js yang diperlukan dengan menjalankan:
-
     ```bash
     npm install
     ```
 
-    Perintah ini akan menginstal Puppeteer, stealth plugin, axios, chalk, dan pustaka lain yang didefinisikan dalam `package.json`.
-
 ## Konfigurasi
 
-### URL Target
+### Daftar URL
 
-Buat file bernama `ouo.txt` di dalam direktori `data`. Tambahkan URL OUO.IO target, satu per baris. Jika direktori tidak ada, buat terlebih dahulu.
+Buat file `ouo.txt` di dalam direktori `data/`, lalu isi dengan URL OUO.IO target — satu URL per baris.
 
-**Jalur File:** `data/ouo.txt`
+**Lokasi:** `data/ouo.txt`
 
-**Contoh Konten:**
 ```text
 https://ouo.io/contoh1
 https://ouo.io/contoh2
 https://ouo.io/contoh3
 ```
 
-### Pengaturan Lanjutan
+### Parameter Lanjutan
 
-Anda dapat menyesuaikan parameter operasional dengan memodifikasi objek `CONFIG` di dalam file `main.js`:
+Sesuaikan konfigurasi melalui objek `CONFIG` di dalam `main.js`:
 
 ```javascript
 const CONFIG = {
-    useProxy: true,       // Set ke false untuk menonaktifkan penggunaan proxy
-    ouoFile: 'data/ouo.txt', // Lokasi file URL input
-    headless: 'new',      // 'new' untuk mode headless, false untuk browser terlihat
-    timeout: 50000,       // Waktu maksimum (ms) menunggu operasi
-    consecutiveFailureThreshold: 2, // Batas kegagalan berturut-turut
-    concurrency: 5,       // Jumlah worker browser konkuren
+    useProxy: true,                    // Aktifkan/nonaktifkan proxy
+    ouoFile: 'data/ouo.txt',           // Lokasi file daftar URL
+    headless: 'new',                   // 'new' = headless, false = tampilkan browser
+    timeout: 50000,                    // Batas waktu operasi (ms)
+    consecutiveFailureThreshold: 2,    // Batas toleransi kegagalan berturut-turut
+    concurrency: 5,                    // Jumlah worker yang berjalan bersamaan
 };
 ```
 
 ## Penggunaan
 
-Untuk memulai proses bypass, jalankan perintah berikut di terminal Anda:
-
 ```bash
 npm run ouo
 ```
 
-Aplikasi akan menginisialisasi, mengambil proxy SOCKS yang tersedia, mengacak daftar URL, dan mulai memproses URL yang terdaftar di `data/ouo.txt`. Kemajuan dan status akan ditampilkan di konsol.
+Setelah dijalankan, aplikasi akan mengambil daftar proxy, mengacak urutan URL, lalu mulai memproses setiap tautan secara konkuren. Status dan laporan akhir akan ditampilkan langsung di terminal.
 
 ## Penafian
 
-Perangkat lunak ini disediakan hanya untuk tujuan pendidikan dan pengujian. Penulis tidak bertanggung jawab atas penyalahgunaan alat ini atau atas konsekuensi apa pun yang diakibatkan oleh penggunaannya. Pengguna bertanggung jawab penuh untuk memastikan tindakan mereka mematuhi semua hukum dan ketentuan layanan yang berlaku.
+Perangkat lunak ini disediakan semata-mata untuk keperluan riset, edukasi, dan pengujian teknis. Penulis tidak bertanggung jawab atas segala bentuk penyalahgunaan atau konsekuensi yang timbul dari penggunaan alat ini. Pengguna sepenuhnya bertanggung jawab untuk memastikan kepatuhan terhadap hukum dan ketentuan layanan yang berlaku.
 
 ## Lisensi
 
 Hak Cipta © 2026 **Dakila Universe**. Semua Hak Dilindungi.
 
-Penyalinan, modifikasi, distribusi, atau penggunaan perangkat lunak ini secara tidak sah sangat dilarang tanpa izin tertulis dari pemegang hak cipta.
+Dilarang keras menyalin, memodifikasi, mendistribusikan, atau menggunakan perangkat lunak ini tanpa izin tertulis dari pemegang hak cipta.

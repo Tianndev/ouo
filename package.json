@@ -1,7 +1,7 @@
 {
-    "name": "ouo-bypass",
+    "name": "ouo-navigator",
     "version": "2.1.0",
-    "description": "OUO.IO link bypasser using Puppeteer with stealth plugin and SOCKS proxy support",
+    "description": "Automated OUO.IO link navigator with concurrent multi-worker processing and SOCKS proxy rotation",
     "main": "main.js",
     "scripts": {
         "ouo": "node main.js"
