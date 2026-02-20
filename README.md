@@ -28,8 +28,8 @@ Pastikan perangkat lunak berikut telah terpasang sebelum memulai:
 1. **Clone Repositori**
 
     ```bash
-    git clone https://github.com/Tianndev/uou.git
-    cd uou
+    git clone https://github.com/Tianndev/ouo.git
+    cd ouo
     ```
 
 2. **Instal Dependensi**
