@@ -49,10 +49,10 @@ function formatProxyUrl(proxy) {
     return /^(https?|socks)/.test(proxy) ? proxy : `http://${proxy}`;
 }
 
-function logRequest(urlId, message, proxy, color) {
+function logRequest(urlId, message, proxy, color = null) {
     requestCounter++;
     const colorFn = chalk[color]?.bold || chalk.white.bold;
-    console.log(`${colorizeText('ᶠᶸᶜᵏᵧₒᵤ', requestCounter)} ${colorFn(urlId)} | ${colorFn(message)} | ${colorFn(formatProxy(proxy))}`);
+    console.log(`${colorizeText('ᶠᶸᶜᵏᵧₒᵤ', requestCounter)} ${colorFn('ouo.io/')}${colorFn(urlId)} ${chalk.white.bold('→')} ${colorFn(message)} | ${colorFn(formatProxy(proxy))}`);
 }
 
 function displayBanner() {
@@ -242,22 +242,37 @@ async function processUrl(url, urlId, proxyUrl, page) {
             }
         }
 
-        await page.waitForSelector('#form-captcha', { timeout: CONFIG.timeout });
-        await delay(3000);
-        await page.evaluate(() => document.querySelector('#form-captcha #btn-main')?.click());
-        await page.waitForSelector('#form-go', { timeout: CONFIG.timeout });
-
+        await page.waitForSelector('#form-captcha #btn-main', { timeout: CONFIG.timeout });
         await page.waitForFunction(
-            () => { const cd = document.querySelector('#countdown'); return cd && cd.className.includes('end'); },
-            { timeout: CONFIG.timeout, polling: 200 }
+            () => {
+                const btn = document.querySelector('#form-captcha #btn-main');
+                return btn && btn.className.trim() === 'btn btn-main' && !btn.disabled;
+            },
+            { timeout: 10000, polling: 100 }
         ).catch(() => { });
 
-        await delay(500);
-        await page.evaluate(() => document.querySelector('#form-go #btn-main')?.click());
-        await delay(1000);
+        await delay(300);
+        await page.evaluate(() => document.querySelector('#form-captcha #btn-main')?.click());
+        await page.waitForSelector('#form-go #btn-main', { timeout: CONFIG.timeout });
 
+        await page.waitForFunction(
+            () => {
+                const btn = document.querySelector('#form-go #btn-main');
+                return btn && btn.className.trim() === 'btn btn-main';
+            },
+            { timeout: CONFIG.timeout, polling: 100 }
+        ).catch(() => { });
+
+        await delay(300);
+        await Promise.all([
+            page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: CONFIG.timeout }).catch(() => { }),
+            page.evaluate(() => document.querySelector('#form-go #btn-main')?.click()),
+        ]);
+        await delay(500);
+
+        const finalUrl = page.url();
         urlStats[urlId].success++;
-        logRequest(urlId, 'SUCCESS', proxyUrl, 'green');
+        logRequest(urlId, 'SUCCESS', proxyUrl, 'green', finalUrl);
         return 'success';
 
     } catch {
@@ -356,7 +371,10 @@ async function main() {
 
         const rawUrls = (await loadIds(CONFIG.ouoFile))
             .filter(l => l.startsWith('http'))
-            .map((url, i) => ({ url, id: `URL-${i + 1}` }));
+            .map((url) => {
+                const id = url.split('/').filter(Boolean).pop() || url;
+                return { url, id };
+            });
 
         if (rawUrls.length === 0) {
             console.error(chalk.red.bold('✗ Tidak ada URL ditemukan di ouo.txt'));
