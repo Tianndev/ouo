@@ -90,7 +90,7 @@ function displayBanner() {
     };
 
     const info = [
-        { label: 'Name', value: 'OUO.IO BYPASS' },
+        { label: 'Name', value: 'OUO.IO BOT TRAFFIC' },
         { label: 'Version', value: '3.0.0' },
         { label: 'Author', value: 'Dakila Universe' },
         { label: 'Engine', value: 'Puppeteer + Stealth' },
@@ -382,7 +382,6 @@ async function main() {
         }
 
         const urls = shuffleArray(rawUrls);
-        const urlQueue = [...urls];
         urls.forEach(({ id }) => { urlStats[id] = initStats(); });
 
         let allProxies = [];
@@ -405,31 +404,42 @@ async function main() {
         console.log(chalk.white.bold('Concurrency : ') + chalk.cyan.bold(CONFIG.concurrency));
 
         if (allProxies.length > 0) {
-            const proxyQueue = shuffleArray(allProxies);
-            let proxyIndex = 0;
-            const workerCount = Math.min(CONFIG.concurrency, proxyQueue.length);
-            console.log(chalk.white.bold('Workers     : ') + chalk.cyan.bold(workerCount));
+            const proxyPool = shuffleArray(allProxies);
+            let proxyPoolIndex = 0;
+
+            const getNextProxy = () => {
+                while (proxyPoolIndex < proxyPool.length) {
+                    const p = proxyPool[proxyPoolIndex++];
+                    if (!failedProxies.has(p)) return p;
+                }
+                return null;
+            };
+
+            console.log(chalk.white.bold('Workers     : ') + chalk.cyan.bold(CONFIG.concurrency));
             console.log('');
 
-            const workers = Array.from({ length: workerCount }, () =>
+            const workers = Array.from({ length: CONFIG.concurrency }, () =>
                 (async () => {
-                    while (urlQueue.length > 0) {
-                        const idx = proxyIndex++;
-                        if (idx >= proxyQueue.length) break;
-                        const proxy = proxyQueue[idx];
-                        if (failedProxies.has(proxy)) continue;
+                    while (true) {
+                        const proxy = getNextProxy();
+                        if (!proxy) break;
 
                         const alive = await testProxy(proxy, 5000);
-                        if (!alive) { failedProxies.add(proxy); continue; }
+                        if (!alive) {
+                            failedProxies.add(proxy);
+                            continue;
+                        }
 
+                        const urlQueue = shuffleArray(urls).map(u => ({ ...u }));
                         await processBatch([], proxy, urlQueue);
-                        await delay(500);
+                        await delay(300);
                     }
                 })()
             );
 
             await Promise.all(workers);
         } else {
+            const urlQueue = [...urls];
             await processBatch([], null, urlQueue);
         }
 
@@ -442,6 +452,7 @@ async function main() {
         console.log(chalk.green.bold('Success       : ') + chalk.green.bold(totals.success));
         console.log(chalk.red.bold('Failed        : ') + chalk.red.bold(totals.failed));
         console.log(chalk.red.bold('Proxy Errors  : ') + chalk.red.bold(totals.proxyErrors));
+        console.log(chalk.red.bold('Blacklisted   : ') + chalk.red.bold(failedProxies.size) + chalk.white.bold(' proxies'));
         console.log(chalk.white.bold('─'.repeat(70)));
         console.log(chalk.white.bold('Duration      : ') + chalk.white.bold(formatDuration(Date.now() - startTime)));
         console.log(chalk.white.bold('═'.repeat(70)));
