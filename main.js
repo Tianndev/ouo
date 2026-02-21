@@ -6,9 +6,9 @@ const UserAgent = require('user-agents');
 const chalk = require('chalk');
 const os = require('os');
 const path = require('path');
-const fs = require('fs');
 const net = require('net');
 const axios = require('axios');
+const { formatDuration, initStats, aggregateStats, loadIds } = require('./lib/utils');
 
 puppeteer.use(StealthPlugin());
 
@@ -17,8 +17,10 @@ const CONFIG = {
     ouoFile: path.join(__dirname, 'data/ouo.txt'),
     headless: 'new',
     timeout: 50000,
-    consecutiveFailureThreshold: 2,
+    consecutiveFailureThreshold: 3,
     concurrency: 5,
+    delayMin: 500,
+    delayMax: 1500,
 };
 
 const urlStats = {};
@@ -47,34 +49,10 @@ function formatProxyUrl(proxy) {
     return /^(https?|socks)/.test(proxy) ? proxy : `http://${proxy}`;
 }
 
-function formatDuration(ms) {
-    const s = Math.floor(ms / 1000);
-    const m = Math.floor(s / 60);
-    const h = Math.floor(m / 60);
-    if (h > 0) return `${h}h ${m % 60}m ${s % 60}s`;
-    if (m > 0) return `${m}m ${s % 60}s`;
-    return `${s}s`;
-}
-
 function logRequest(urlId, message, proxy, color) {
     requestCounter++;
     const colorFn = chalk[color]?.bold || chalk.white.bold;
     console.log(`${colorizeText('ᵒᵘᵒ.ⁱᵒ', requestCounter)} ${colorFn(urlId)} | ${colorFn(message)} | ${colorFn(formatProxy(proxy))}`);
-}
-
-function initStats() {
-    return { success: 0, failed: 0, proxyErrors: 0 };
-}
-
-function aggregateStats(stats) {
-    return Object.values(stats).reduce(
-        (acc, s) => ({
-            success: acc.success + s.success,
-            failed: acc.failed + s.failed,
-            proxyErrors: acc.proxyErrors + (s.proxyErrors || 0),
-        }),
-        { success: 0, failed: 0, proxyErrors: 0 }
-    );
 }
 
 function displayBanner() {
@@ -113,7 +91,7 @@ function displayBanner() {
 
     const info = [
         { label: 'Name', value: 'OUO.IO BYPASS' },
-        { label: 'Version', value: '2.1.0' },
+        { label: 'Version', value: '3.0.0' },
         { label: 'Author', value: 'Dakila Universe' },
         { label: 'Engine', value: 'Puppeteer + Stealth' },
         { label: 'PID', value: process.pid },
@@ -240,56 +218,16 @@ const AD_DOMAINS = [
     'cuplikenominee.com', 'displayvertising.com', 'adsco.re',
 ];
 
-async function processUrl(url, urlId, proxyUrl = null) {
-    let browser = null;
+async function processUrl(url, urlId, proxyUrl, page) {
     try {
         const userAgent = new UserAgent({ deviceCategory: 'mobile' }).toString();
-
-        browser = await launchBrowser(proxyUrl);
-        const page = await browser.newPage();
-
         await page.setUserAgent(userAgent);
-        await page.setViewport({ width: 1280, height: 800 });
         await page.setExtraHTTPHeaders({
             'Accept-Language': 'en-US,en;q=0.9',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
             'Accept-Encoding': 'gzip, deflate, br',
             'Cache-Control': 'no-cache',
             'Upgrade-Insecure-Requests': '1',
-        });
-
-        await page.evaluateOnNewDocument(() => {
-            Object.defineProperty(navigator, 'webdriver', { get: () => false });
-            Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
-            Object.defineProperty(navigator, 'plugins', {
-                get: () => [
-                    { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer' },
-                    { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai' },
-                    { name: 'Native Client', filename: 'internal-nacl-plugin' },
-                ]
-            });
-            Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
-            Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
-            delete navigator.__proto__.webdriver;
-            window.chrome = { runtime: {}, loadTimes: () => { }, csi: () => { }, app: {} };
-            window.open = () => null;
-        });
-
-        page.on('error', () => { });
-        page.on('pageerror', () => { });
-
-        await page.setRequestInterception(true);
-        page.on('request', (req) => {
-            const isBlocked = ['image', 'stylesheet', 'font', 'media'].includes(req.resourceType())
-                || AD_DOMAINS.some(d => req.url().includes(d));
-            isBlocked ? req.abort() : req.continue();
-        });
-
-        browser.on('targetcreated', async (target) => {
-            if (target.type() === 'page') {
-                const newPage = await target.page().catch(() => null);
-                if (newPage) await newPage.close().catch(() => { });
-            }
         });
 
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: CONFIG.timeout });
@@ -300,8 +238,7 @@ async function processUrl(url, urlId, proxyUrl = null) {
             await delay(8000);
             const titleAfter = await page.title().catch(() => '');
             if (titleAfter.includes('Just a moment') || titleAfter.includes('Cloudflare')) {
-                failedProxies.add(proxyUrl || 'Direct');
-                return false;
+                return 'cloudflare';
             }
         }
 
@@ -321,12 +258,82 @@ async function processUrl(url, urlId, proxyUrl = null) {
 
         urlStats[urlId].success++;
         logRequest(urlId, 'SUCCESS', proxyUrl, 'green');
-        return true;
+        return 'success';
 
     } catch {
-        const stats = urlStats[urlId];
-        if (stats) { stats.failed++; stats.proxyErrors++; }
-        failedProxies.add(proxyUrl || 'Direct');
+        urlStats[urlId].failed++;
+        return 'failed';
+    }
+}
+
+async function processBatch(items, proxyUrl, urlQueue) {
+    let browser = null;
+    let consecutiveFailures = 0;
+    const currentProxy = proxyUrl || null;
+
+    try {
+        browser = await launchBrowser(currentProxy);
+
+        while (true) {
+            if (consecutiveFailures >= CONFIG.consecutiveFailureThreshold) {
+                failedProxies.add(currentProxy || 'Direct');
+                break;
+            }
+
+            const item = urlQueue.shift();
+            if (!item) break;
+
+            const page = await browser.newPage();
+            page.on('error', () => { });
+            page.on('pageerror', () => { });
+            page.on('popup', async (popup) => { await popup.close().catch(() => { }); });
+
+            await page.evaluateOnNewDocument(() => {
+                Object.defineProperty(navigator, 'webdriver', { get: () => false });
+                Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+                Object.defineProperty(navigator, 'plugins', {
+                    get: () => [
+                        { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer' },
+                        { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai' },
+                        { name: 'Native Client', filename: 'internal-nacl-plugin' },
+                    ]
+                });
+                Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
+                Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
+                delete navigator.__proto__.webdriver;
+                window.chrome = { runtime: {}, loadTimes: () => { }, csi: () => { }, app: {} };
+                window.open = () => null;
+            });
+
+            await page.setRequestInterception(true);
+            page.on('request', (req) => {
+                const isBlocked = ['image', 'stylesheet', 'font', 'media'].includes(req.resourceType())
+                    || AD_DOMAINS.some(d => req.url().includes(d));
+                isBlocked ? req.abort() : req.continue();
+            });
+
+            const result = await processUrl(item.url, item.id, currentProxy, page);
+            await page.close().catch(() => { });
+
+            if (result === 'cloudflare') {
+                failedProxies.add(currentProxy || 'Direct');
+                urlQueue.unshift(item);
+                break;
+            }
+
+            if (result === 'failed') {
+                consecutiveFailures++;
+                urlStats[item.id].proxyErrors++;
+            } else {
+                consecutiveFailures = 0;
+            }
+
+            await randomDelay(CONFIG.delayMin, CONFIG.delayMax);
+        }
+
+        return true;
+    } catch {
+        failedProxies.add(currentProxy || 'Direct');
         return false;
     } finally {
         if (browser) await browser.close().catch(() => { });
@@ -347,19 +354,17 @@ async function main() {
     try {
         displayBanner();
 
-        const rawUrls = fs.readFileSync(CONFIG.ouoFile, 'utf-8')
-            .split('\n')
-            .map(l => l.trim())
-            .filter(l => l && l.startsWith('http'))
+        const rawUrls = (await loadIds(CONFIG.ouoFile))
+            .filter(l => l.startsWith('http'))
             .map((url, i) => ({ url, id: `URL-${i + 1}` }));
-        const urls = shuffleArray(rawUrls);
-        const urlQueue = [...urls];
 
-        if (urls.length === 0) {
+        if (rawUrls.length === 0) {
             console.error(chalk.red.bold('✗ Tidak ada URL ditemukan di ouo.txt'));
             process.exit(1);
         }
 
+        const urls = shuffleArray(rawUrls);
+        const urlQueue = [...urls];
         urls.forEach(({ id }) => { urlStats[id] = initStats(); });
 
         let allProxies = [];
@@ -380,40 +385,35 @@ async function main() {
             console.log(chalk.white.bold('Blacklisted : ') + chalk.red.bold(failedProxies.size) + chalk.white.bold(' proxies'));
         }
         console.log(chalk.white.bold('Concurrency : ') + chalk.cyan.bold(CONFIG.concurrency));
-        console.log('');
 
-        function pickRandomProxy(pool) {
-            const available = pool.filter(p => !failedProxies.has(p));
-            if (!available.length) return null;
-            return available[Math.floor(Math.random() * available.length)];
-        }
+        if (allProxies.length > 0) {
+            const proxyQueue = shuffleArray(allProxies);
+            let proxyIndex = 0;
+            const workerCount = Math.min(CONFIG.concurrency, proxyQueue.length);
+            console.log(chalk.white.bold('Workers     : ') + chalk.cyan.bold(workerCount));
+            console.log('');
 
-        async function worker(pool) {
-            while (true) {
-                const item = urlQueue.shift();
-                if (!item) break;
+            const workers = Array.from({ length: workerCount }, () =>
+                (async () => {
+                    while (urlQueue.length > 0) {
+                        const idx = proxyIndex++;
+                        if (idx >= proxyQueue.length) break;
+                        const proxy = proxyQueue[idx];
+                        if (failedProxies.has(proxy)) continue;
 
-                let proxy = null;
-                if (pool.length > 0) {
-                    let attempts = 0;
-                    while (attempts < pool.length) {
-                        const candidate = pickRandomProxy(pool);
-                        if (!candidate) break;
-                        const alive = await testProxy(candidate, 5000);
-                        if (alive) { proxy = candidate; break; }
-                        failedProxies.add(candidate);
-                        attempts++;
+                        const alive = await testProxy(proxy, 5000);
+                        if (!alive) { failedProxies.add(proxy); continue; }
+
+                        await processBatch([], proxy, urlQueue);
+                        await delay(500);
                     }
-                }
+                })()
+            );
 
-                await processUrl(item.url, item.id, proxy);
-                await randomDelay(300, 1000);
-            }
+            await Promise.all(workers);
+        } else {
+            await processBatch([], null, urlQueue);
         }
-
-        const pool = [...allProxies];
-        const workerCount = CONFIG.concurrency;
-        await Promise.all(Array.from({ length: workerCount }, () => worker(pool)));
 
         const totals = aggregateStats(urlStats);
         console.log('');
