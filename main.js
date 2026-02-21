@@ -52,7 +52,7 @@ function formatProxyUrl(proxy) {
 function logRequest(urlId, message, proxy, color) {
     requestCounter++;
     const colorFn = chalk[color]?.bold || chalk.white.bold;
-    console.log(`${colorizeText('ᵒᵘᵒ.ⁱᵒ', requestCounter)} ${colorFn(urlId)} | ${colorFn(message)} | ${colorFn(formatProxy(proxy))}`);
+    console.log(`${colorizeText('ᶠᶸᶜᵏᵧₒᵤ', requestCounter)} ${colorFn(urlId)} | ${colorFn(message)} | ${colorFn(formatProxy(proxy))}`);
 }
 
 function displayBanner() {
